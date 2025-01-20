@@ -24,11 +24,11 @@
 	>
 		<div class="flex flex-col justify-center items-center w-full mt-10">
 			<div class="flex flex-row justify-evenly items-center gap-5 w-full">
-				<input type="text" placeholder="Title" required class="w-82% rounded-lg p-2" />
+				<input type="text" placeholder="Title" name="title" required class="w-82% rounded-lg p-2" />
 
 			</div>
 
-			<textarea placeholder="Description" required class="w-82% mt-5 rounded-lg p-2"></textarea>
+			<textarea placeholder="Description" name="desc" required class="w-82% mt-5 rounded-lg p-2"></textarea>
 		</div>
 
 		<input
