@@ -114,9 +114,7 @@ export const PATCH: RequestHandler = async (req) => {
 		include: { rooms: true },
 	});
 	if (!user) return error(403, 'Unauthorized');
-	if (![Role.supervisor, Role.admin].map((r) => r.toString()).includes(user.role)) {
-		return error(403, 'Unauthorized');
-	}
+	if (user.role === Role.teacher) return error(403, 'Unauthorized');
 
 	const body = PATCHBody.safeParse(await req.request.json().catch(() => ({})));
 	if (!body.success) return error(400, body.error.message);
@@ -124,7 +122,9 @@ export const PATCH: RequestHandler = async (req) => {
 	const ticket = await DataBase.tickets.findUnique({ where: { id: body.data.ticketId } });
 
 	const room = await DataBase.rooms.findUnique({ where: { id: ticket?.roomId } });
-	if (room?.supervisorId !== Number(uId)) return error(403, 'Unauthorized');
+	if (room?.supervisorId !== Number(uId) && user.role !== Role.admin) {
+		return error(403, 'Unauthorized');
+	}
 
 	await DataBase.tickets.update({
 		where: { id: body.data.ticketId },

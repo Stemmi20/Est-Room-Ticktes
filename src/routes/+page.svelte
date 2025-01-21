@@ -4,17 +4,34 @@
 	import { Role, State } from '@prisma/client';
 	import type { PageServerData } from './$types';
 	import type { GETResponse } from './api/tickets/+server';
+	import { page } from '$app/state';
 
 	const { data, form }: { data: PageServerData; form: { message: string } } = $props();
 	const tickets = $state({ own: data.tickets.own, rooms: data.tickets.rooms });
+
+	const findTicket = (id: string | null) => {
+		if (!id) return tickets.own[0];
+		const ticket = tickets.own.find((t) => String(t.id) === id);
+		if (ticket) return ticket;
+
+		if (tickets.rooms) return tickets.rooms.find((t) => String(t.id) === id) || null;
+		return tickets.own[0];
+	};
 
 	let showModal = $state(false);
 	let search = $state('');
 	let showStatus = $state(false);
 	let sort: 'created' | 'title' | 'state' | 'room' = $state('created');
-	let viewing: null | GETResponse['own'][number] = $state(tickets.own[0]);
+	let viewing: null | GETResponse['own'][number] = $state(
+		findTicket(page.url.searchParams.get('id') || null),
+	);
 
-	$effect(() => console.log(sort));
+	$effect(() => {
+		const newUrl = new URL(location.href);
+		newUrl.searchParams.set('id', String(viewing?.id || ''));
+
+		window.history.replaceState(null, '', newUrl.href);
+	});
 
 	const find = (t: GETResponse['own'][number]) =>
 		`${t.title} ${t.desc} ${t.author.firstName} ${t.author.lastName} ${t.roomId} ${t.state}`
@@ -49,7 +66,7 @@
 		fetch('/', {
 			method: 'PATCH',
 			body: JSON.stringify({ ticketId: viewing.id, state }),
-		});
+		}).then(async (r) => console.log(await r.text()));
 	};
 
 	const del = () => {
@@ -243,7 +260,7 @@
 
 							{#if showStatus}
 								<div class="flex flex-col mt-2">
-									<label for="OPEN">
+									<label for="OPEN" class="select-none">
 										<input
 											type="radio"
 											value="OPEN"
@@ -256,7 +273,7 @@
 										open
 									</label>
 
-									<label for="INPROGRESS">
+									<label for="INPROGRESS" class="select-none">
 										<input
 											type="radio"
 											value="INPROGRESS"
@@ -268,7 +285,7 @@
 										/> in progress
 									</label>
 
-									<label for="DONE">
+									<label for="DONE" class="select-none">
 										<input
 											type="radio"
 											value="DONE"
