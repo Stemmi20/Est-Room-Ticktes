@@ -29,6 +29,7 @@ model users {
 
   role    Role
   rooms   rooms[]
+  comments comments[]
   tickets tickets[]
 }
 
@@ -47,6 +48,7 @@ model tickets {
   creation String
   authorId Int
 
+  comments comments[]
   author users @relation(fields: [authorId], references: [id])
   room   rooms @relation(fields: [roomId], references: [id])
 }
@@ -57,4 +59,15 @@ model rooms {
 
   supervisor users?    @relation(fields: [supervisorId], references: [id])
   tickets    tickets[]
+}
+
+model comments {
+  id        Int    @id @default(autoincrement())
+  ticketId  Int
+  authorId  Int
+  content   String
+  creation  String
+
+  author users  @relation(fields: [authorId], references: [id])
+  ticket tickets @relation(fields: [ticketId], references: [id])
 }

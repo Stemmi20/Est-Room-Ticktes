@@ -6,4 +6,6 @@
 	const { children }: { children: Snippet } = $props();
 </script>
 
-{@render children()}
+<div class="bg-gradient-to-br from-stone-9 to-teal-9 h-100lvh w-100lvw">
+	{@render children()}
+</div>

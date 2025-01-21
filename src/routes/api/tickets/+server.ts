@@ -1,45 +1,56 @@
 import token from '$lib/scripts/validators/token';
 import DataBase from '$lib/server/database';
-import { Role, State, type tickets, type users } from '@prisma/client';
-import { error, json, redirect } from '@sveltejs/kit';
+import { Role, State, type comments, type tickets, type users } from '@prisma/client';
+import { error, json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async (req) => {
-	const uId = token(req.cookies.get('token') || '');
-	if (!uId) throw redirect(307, '/login');
+	const uId = token(req.request.headers.get('Authorization') || '');
+	if (!uId) return error(403, 'Unauthorized');
 
 	const user = await DataBase.users.findUnique({
 		where: { id: Number(uId) },
 		include: { rooms: true },
 	});
-	if (!user) throw redirect(307, '/login');
+	if (!user) return error(403, 'Unauthorized');
 
 	const own = await DataBase.tickets.findMany({
 		where: { authorId: Number(uId) },
-		include: { author: true },
-		orderBy: { creation: 'desc' },
+		include: {
+			author: { omit: { password: true, email: true } },
+			comments: {
+				orderBy: { creation: 'desc' },
+				include: { author: { omit: { password: true, email: true } } },
+			},
+		},
+		orderBy: { creation: 'asc' },
 	});
 
 	const rooms = await DataBase.tickets.findMany({
 		where: { roomId: { in: user.rooms.map((r) => r.id) } },
-		include: { author: true },
-		orderBy: { creation: 'desc' },
+		include: {
+			author: { omit: { password: true, email: true } },
+			comments: {
+				orderBy: { creation: 'desc' },
+				include: { author: { omit: { password: true, email: true } } },
+			},
+		},
+		orderBy: { creation: 'asc' },
 	});
-
-	[own, rooms].forEach((c) =>
-		c.forEach((r) => {
-			r.author.password = '';
-			r.author.email = '';
-		}),
-	);
 
 	return json({ own, rooms: user.role === 'teacher' ? null : rooms } as GETResponse);
 };
 
 export interface GETResponse {
-	own: (tickets & { author: users })[];
-	rooms: (tickets & { author: users })[] | null;
+	own: (tickets & { author: Omit<users, 'password' | 'email'> } & {
+		comments: (comments & { author: Omit<users, 'password' | 'email'> })[];
+	})[];
+	rooms:
+		| (tickets & { author: Omit<users, 'password' | 'email'> } & {
+				comments: (comments & { author: Omit<users, 'password' | 'email'> })[];
+		  })[]
+		| null;
 }
 
 const POSTBody = z.object(
@@ -52,19 +63,19 @@ const POSTBody = z.object(
 );
 
 export const POST: RequestHandler = async (req) => {
-	const uId = token(req.cookies.get('token') || '');
-	if (!uId) throw redirect(307, '/login');
+	const uId = token(req.request.headers.get('Authorization') || '');
+	if (!uId) return error(403, 'Unauthorized');
 
 	const user = await DataBase.users.findUnique({
 		where: { id: Number(uId) },
 		include: { rooms: true },
 	});
-	if (!user) throw redirect(307, '/login');
+	if (!user) return error(403, 'Unauthorized');
 
 	const body = POSTBody.safeParse(await req.request.json().catch(() => ({})));
 	if (!body.success) return error(400, body.error.message);
 
-	const room = user.rooms.find((r) => r.id === body.data.roomId);
+	const room = await DataBase.rooms.findUnique({ where: { id: body.data.roomId } });
 	if (!room) return error(400, 'Room does not exist');
 
 	const ticket = await DataBase.tickets.create({
@@ -95,14 +106,14 @@ const PATCHBody = z.object(
 );
 
 export const PATCH: RequestHandler = async (req) => {
-	const uId = token(req.cookies.get('token') || '');
-	if (!uId) throw redirect(307, '/login');
+	const uId = token(req.request.headers.get('Authorization') || '');
+	if (!uId) return error(403, 'Unauthorized');
 
 	const user = await DataBase.users.findUnique({
-		where: { id: Number(uId) },
+		where: { id: Number(uId), role: { in: [Role.supervisor, Role.admin] } },
 		include: { rooms: true },
 	});
-	if (!user) throw redirect(307, '/login');
+	if (!user) return error(403, 'Unauthorized');
 	if (![Role.supervisor, Role.admin].map((r) => r.toString()).includes(user.role)) {
 		return error(403, 'Unauthorized');
 	}
@@ -110,13 +121,18 @@ export const PATCH: RequestHandler = async (req) => {
 	const body = PATCHBody.safeParse(await req.request.json().catch(() => ({})));
 	if (!body.success) return error(400, body.error.message);
 
-	const ticket = await DataBase.tickets.update({
+	const ticket = await DataBase.tickets.findUnique({ where: { id: body.data.ticketId } });
+
+	const room = await DataBase.rooms.findUnique({ where: { id: ticket?.roomId } });
+	if (room?.supervisorId !== Number(uId)) return error(403, 'Unauthorized');
+
+	await DataBase.tickets.update({
 		where: { id: body.data.ticketId },
 		data: { state: body.data.state },
 	});
 
 	if (ticket) return json(ticket as PATCHResponse);
-	return error(500, 'Failed to create ticket');
+	return error(500, 'Failed to edit ticket');
 };
 
 export type PATCHResponse = tickets;

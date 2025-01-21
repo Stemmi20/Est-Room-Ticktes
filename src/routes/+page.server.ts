@@ -1,60 +1,87 @@
-import type { GETResponse } from './api/tickets/+server.js';
-import type { PageServerLoad } from './$types.js';
-import { redirect } from '@sveltejs/kit';
-import { SALT_ROUNDS, SECRET } from '$env/static/private';
-import { DefaultCookieOpts } from '$lib/scripts';
-import EmailValidator from '$lib/scripts/validators/email';
-import PasswordValidator from '$lib/scripts/validators/password';
-import RoleValidator from '$lib/scripts/validators/role';
+import token from '$lib/scripts/validators/token.js';
 import DataBase from '$lib/server/database';
-import { fail, json, type Actions } from '@sveltejs/kit';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import { fail, redirect, type Actions } from '@sveltejs/kit';
 import { z } from 'zod';
+import type { PageServerLoad } from './$types.js';
+import type { GETResponse } from './api/tickets/+server.js';
 
 export const load: PageServerLoad = async (event) => {
 	if (!event.cookies.get('token')) throw redirect(307, '/login');
 
 	const data = await event
-		.fetch('/api/tickets', { headers: { 'Content-Type': 'application/json' } })
+		.fetch('/api/tickets', {
+			headers: { 'Content-Type': 'application/json', Authorization: event.cookies.get('token') || '' },
+		})
 		.then((r) => (r.ok ? (r.json() as Promise<GETResponse>) : { own: [], rooms: [] }));
 
-	const rooms = await DataBase.rooms.findMany({
-		where: {},
+	const rooms = await DataBase.rooms.findMany({ where: {} });
+
+	const user = await DataBase.users.findUnique({
+		where: { id: Number(token(event.cookies.get('token') || '')) },
+		omit: { password: true },
+		include: { rooms: true },
 	});
 
-	return { rooms: rooms?.filter((r) => !r.supervisorId).map((r) => r.id), tickets: data };
+	return {
+		tickets: data,
+		allRooms: rooms,
+		rooms: rooms?.filter((r) => !r.supervisorId).map((r) => r.id),
+		user,
+	};
 };
 
 const CreatePayload = z.object({
 	title: z.string(),
 	desc: z.string(),
-	rooms: z.array(z.string()),
+	room: z.string(),
+});
+
+const CommentPayload = z.object({
+	content: z.string(),
+	ticket: z.string(),
 });
 
 export const actions = {
-	create: async ({ cookies, request }) => {
-		const body = await request.formData().then((r) => Object.fromEntries(r as never));
+	create: async ({ cookies, request, fetch }) => {
+		const uId = token(cookies.get('token') || '');
+		if (!uId) throw redirect(307, '/login');
+
+		const formData = await request.formData();
+		const body = CreatePayload.safeParse(Object.fromEntries(formData as never));
+		if (!body.success) return fail(400, { message: body.error.message });
+
 		console.log(body);
 
-		// const body = await request
-		// 	.formData()
-		// 	.then((r) => CreatePayload.safeParse(Object.fromEntries(r as never)));
-		// if (!body.success) return fail(400, { message: body.error.message });
+		const res = await fetch('/api/tickets', {
+			method: 'POST',
+			headers: { Authorization: cookies.get('token') || '' },
+			body: JSON.stringify({
+				roomId: body.data.room,
+				title: body.data.title,
+				desc: body.data.desc,
+			}),
+		});
 
-		// const user = await DataBase.users.findFirst({
-		// 	where: { email: body.data.email },
-		// 	select: { password: true, id: true },
-		// });
-		// if (!user) return fail(400, { message: 'User does not exist' });
+		return { success: res.ok };
+	},
+	comment: async ({ cookies, request, fetch }) => {
+		const uId = token(cookies.get('token') || '');
+		if (!uId) throw redirect(307, '/login');
 
-		// const match = await bcrypt.compare(body.data.password, user.password);
-		// if (!match) return fail(403, { message: 'Incorrect Password' });
+		const formData = await request.formData();
+		const body = CommentPayload.safeParse(Object.fromEntries(formData as never));
+		console.log(body.error);
+		if (!body.success) return fail(400, { message: body.error.message });
 
-		// cookies.set(
-		// 	'token',
-		// 	jwt.sign({ id: user.id }, SECRET, { expiresIn: 86400 * 7 }),
-		// 	DefaultCookieOpts,
-		// );
+		const res = await fetch('/api/comments', {
+			method: 'POST',
+			headers: { Authorization: cookies.get('token') || '' },
+			body: JSON.stringify({
+				ticketId: body.data.ticket,
+				content: body.data.content,
+			}),
+		});
+
+		return { success: res.ok };
 	},
 } satisfies Actions;

@@ -1,13 +1,25 @@
+import { invalidateAll } from '$app/navigation';
 import { SALT_ROUNDS, SECRET } from '$env/static/private';
 import { DefaultCookieOpts } from '$lib/scripts';
 import EmailValidator from '$lib/scripts/validators/email';
 import PasswordValidator from '$lib/scripts/validators/password';
 import RoleValidator from '$lib/scripts/validators/role';
 import DataBase from '$lib/server/database';
-import { fail, json, type Actions } from '@sveltejs/kit';
+import { fail, json, redirect, type Actions } from '@sveltejs/kit';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import type { PageServerLoad } from '../$types';
+
+export const load: PageServerLoad = async (event) => {
+	const rooms = await DataBase.rooms.findMany({
+		where: {},
+	});
+
+	return {
+		rooms: rooms?.filter((r) => !r.supervisorId).map((r) => r.id),
+	};
+};
 
 const LoginPayload = z.object({
 	email: EmailValidator,
@@ -30,6 +42,7 @@ const RegisterPayload = z.object({
 		.min(2, { message: 'Address must be gte 2' })
 		.max(50, { message: 'Address must be lte 50' }),
 	role: RoleValidator,
+	rooms: z.array(z.string()),
 });
 
 export const actions = {
@@ -53,11 +66,15 @@ export const actions = {
 			jwt.sign({ id: user.id }, SECRET, { expiresIn: 86400 * 7 }),
 			DefaultCookieOpts,
 		);
+
+		throw redirect(307, '/?reload=true');
 	},
 	register: async ({ cookies, request }) => {
-		const body = await request
-			.formData()
-			.then((r) => RegisterPayload.safeParse(Object.fromEntries(r as never)));
+		const formData = await request.formData();
+
+		const rooms = formData.getAll('room') as string[];
+
+		const body = RegisterPayload.safeParse({ ...Object.fromEntries(formData as never), rooms });
 		if (!body.success) return fail(400, { message: body.error.message });
 
 		const { password, email, firstName, lastName } = body.data;
@@ -78,12 +95,17 @@ export const actions = {
 			select: { id: true },
 		});
 
+		await DataBase.rooms.updateMany({
+			where: { id: { in: rooms } },
+			data: { supervisorId: user.id },
+		});
+
 		cookies.set(
 			'token',
 			jwt.sign({ id: user.id }, SECRET, { expiresIn: 86400 * 7 }),
 			DefaultCookieOpts,
 		);
 
-		return json({ success: true });
+		throw redirect(307, '/?reload=true');
 	},
 } satisfies Actions;
