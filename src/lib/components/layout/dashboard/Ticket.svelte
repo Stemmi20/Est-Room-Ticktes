@@ -6,12 +6,22 @@
 		ticket,
 		i,
 		onfocus,
-	}: { ticket: NonNullable<GETResponse['rooms']>[number]; i: number; onfocus: () => void } =
-		$props();
+		focused,
+	}: {
+		ticket: NonNullable<GETResponse['rooms']>[number];
+		i: number;
+		onfocus: () => void;
+		focused: boolean;
+	} = $props();
 </script>
 
 <div
-	class="my-2 bg-slate-500/50 border-slate-300 border-solid border-2px rounded-lg p-2"
+	class="my-2 border-solid border-2px rounded-lg p-2 w-full transition-all duration-300 ease-in-out"
+	class:border-emerald-500={focused}
+	class:bg-emerald-700:50={focused}
+	class:border-slate-300={!focused}
+	class:bg-slate-500:50={!focused}
+	class:op-50={ticket.state === State.DONE}
 	role="button"
 	tabindex="0"
 	onclick={() => onfocus()}
@@ -37,7 +47,7 @@
 			</span>
 
 			<span class="relative">
-				<span class="absolute text-2 right-0 -top-1.2 text-stone-4">Room No.</span>
+				<span class="absolute text-2 right-0 w-max -top-1.2 text-stone-4">Room No.</span>
 				{ticket.roomId}
 			</span>
 		</div>

@@ -50,8 +50,6 @@ export const actions = {
 		const body = CreatePayload.safeParse(Object.fromEntries(formData as never));
 		if (!body.success) return fail(400, { message: body.error.message });
 
-		console.log(body);
-
 		const res = await fetch('/api/tickets', {
 			method: 'POST',
 			headers: { Authorization: cookies.get('token') || '' },
@@ -70,7 +68,6 @@ export const actions = {
 
 		const formData = await request.formData();
 		const body = CommentPayload.safeParse(Object.fromEntries(formData as never));
-		console.log(body.error);
 		if (!body.success) return fail(400, { message: body.error.message });
 
 		const res = await fetch('/api/comments', {

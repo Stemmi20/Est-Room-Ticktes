@@ -28,7 +28,7 @@ export const GET: RequestHandler = async (req) => {
 	});
 
 	const rooms = await DataBase.tickets.findMany({
-		where: { roomId: { in: user.rooms.map((r) => r.id) } },
+		where: user.role === Role.admin ? {} : { roomId: { in: user.rooms.map((r) => r.id) } },
 		include: {
 			author: { omit: { password: true, email: true } },
 			comments: {
@@ -136,3 +136,30 @@ export const PATCH: RequestHandler = async (req) => {
 };
 
 export type PATCHResponse = tickets;
+
+const DELETEBody = z.object(
+	{
+		ticketId: z.number({ message: 'Ticket ID must be a number' }),
+	},
+	{ message: 'Invalid request body' },
+);
+
+export const DELETE: RequestHandler = async (req) => {
+	const uId = token(req.request.headers.get('Authorization') || '');
+	if (!uId) return error(403, 'Unauthorized');
+
+	const user = await DataBase.users.findUnique({
+		where: { id: Number(uId), role: { in: [Role.supervisor, Role.admin] } },
+		include: { rooms: true },
+	});
+	if (user?.role !== Role.admin) return error(403, 'Unauthorized');
+
+	const body = DELETEBody.safeParse(await req.request.json().catch(() => ({})));
+	if (!body.success) return error(400, body.error.message);
+
+	const ticket = await DataBase.tickets.findUnique({ where: { id: body.data.ticketId } });
+	if (!ticket) return error(404, 'Ticket not found');
+
+	await DataBase.tickets.delete({ where: { id: body.data.ticketId } });
+	return new Response(null, { status: 204 });
+};

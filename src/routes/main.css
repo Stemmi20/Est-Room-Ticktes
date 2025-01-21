@@ -46,3 +46,7 @@ body,
 svg {
 	fill: currentColor;
 }
+
+input[type='file'] {
+	display: none;
+}

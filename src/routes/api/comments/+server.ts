@@ -26,9 +26,6 @@ export const POST: RequestHandler = async (req) => {
 	const body = POSTBody.safeParse(await req.request.json().catch(() => ({})));
 	if (!body.success) return error(400, body.error.message);
 
-	const room = await DataBase.rooms.findUnique({ where: { id: body.data.ticketId } });
-	if (!room) return error(400, 'Room does not exist');
-
 	if (!(await isAllowed(user, body.data.ticketId))) return error(403, 'Unauthorized');
 
 	const comment = await DataBase.comments.create({
